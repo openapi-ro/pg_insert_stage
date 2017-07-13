@@ -203,7 +203,8 @@ defmodule PgInsertStage.Consumer do
           {options, entry} =
             case next do
               %{__struct__: module} when is_atom(module) ->
-                if  function_exported? module, :__schema__, 1 do
+                Code.ensure_loaded( module)
+                if  function_exported?(module, :__schema__, 1) do
                   {table,prefix} = {
                       module.__schema__(:source),
                       module.__schema__(:prefix)
@@ -216,7 +217,9 @@ defmodule PgInsertStage.Consumer do
                     repo: repo
                   ],  next}
                 else
-                  Logger.error("Cannot interpret struct: #{next}. Skipping")
+                  Logger.error("Cannot interpret struct: #{inspect next}. Skipping")
+                  require IEx
+                  IEx.pry
                   {[transaction_id: transaction_id, repo: repo, skip: true],  next}
                 end
             end

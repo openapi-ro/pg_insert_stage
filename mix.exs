@@ -40,7 +40,7 @@ defmodule PgInsertStage.Mixfile do
       {:ecto, "~> 2.1.0"},
       {:postgrex, ">= 0.0.0"},
       {:gen_stage, "~>0.12"},
-      {:csv, "~> 1.4.3"},
+      {:csv, "~> 2.0"},
       {:ex_doc, "~> 0.14", only: :dev, runtime: false},
       {:clope, path: "../clope"}
     ]

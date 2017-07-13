@@ -31,7 +31,7 @@ defmodule PgInsertStage.Producer do
         work_length: work_length-demand,
         work: work,
        }
-       Logger.info "Length after emitting #{demand}: #{work_length-demand}"
+       Logger.debug "PgInsertStage.Producer: Length after emitting #{demand}: #{work_length-demand}"
        {:noreply, emit, state}
     else
       state= %{state|

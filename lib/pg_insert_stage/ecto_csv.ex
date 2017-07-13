@@ -1,4 +1,5 @@
 defmodule PgInsertStage.EctoCsv do
+  require Logger
   def csv_row(entity) do
     entity.__struct__().__schema__(:types)
     |>Enum.map(fn {name,type} -> {name,type,Map.get(entity,name)} end)
@@ -8,8 +9,15 @@ defmodule PgInsertStage.EctoCsv do
       {name, t, value} when  t in [:integer, :id] -> Integer.to_string value
       {name, :float, value} -> Float.to_string value
       {name, Ecto.Date, value} -> Ecto.Date.to_string value
-      {name, :string, value} -> value
-      {name, t, value} when t in [:json,:jsonb] ->Poison.encode! value
+      {name, Ecto.UUID, value} -> value
+      {name, :naive_datetime, value} -> Ecto.DateTime.to_string value
+      {name, t, value} when t in [:string, :binary_id] -> value
+      {name, t, value} when t in [:json,:jsonb, :map] ->Poison.encode! value
+      {name, :array, value}  ->Poison.encode! value
+      {name, {:array,_arr_type} , value}  ->
+        Poison.encode!(value)
+        |> String.replace_leading( "[", "{")
+        |> String.replace_trailing("]", "}")
       end)
   end
   def to_csv(entities, options \\ nil) do

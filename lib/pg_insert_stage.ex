@@ -35,7 +35,7 @@ defmodule PgInsertStage do
       Code.load_file "test/test_repo.ex"
      [worker( TestRepo , [] )]
     else
-
+      []
     end
   end
   @doc """
