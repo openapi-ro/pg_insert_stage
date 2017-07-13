@@ -17,7 +17,7 @@ defmodule PgInsertStage.Mixfile do
     # Specify extra applications you'll use from Erlang/Elixir
     [
       mod: {PgInsertStage,[]},
-      extra_applications: [:logger, :ecto,:postgrex, :gen_stage, :csv, :clope],
+      extra_applications: [:logger, :ecto,:postgrex, :gen_stage, :csv],
       docs: [
         main: "PgInsertStage", # The main page in the docs
         extras: ["README.md"]
