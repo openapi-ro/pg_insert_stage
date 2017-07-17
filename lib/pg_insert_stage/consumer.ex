@@ -76,7 +76,6 @@ defmodule PgInsertStage.Consumer do
       case state.max_procs-proc_count do
         0->  state
         num_procs_to_spawn->
-          Logger.info "#{@mod_string_name}: Spawning up to #{num_procs_to_spawn} processes"
           do_spawn(num_procs_to_spawn, state)
       end
       |> Map.put(:timer, try_later())
@@ -127,7 +126,9 @@ defmodule PgInsertStage.Consumer do
           {OA.Keyword.myers_merge(work_per_transaction, fn _k,v1,v2->v1++v2 end), contained_tx_ids}
         end)
       caller = self()
-      Logger.info "Spawning #{length(work_chunks)} tasks"
+      if length(work_chunks) > 0 do
+        Logger.info "Spawning #{length(work_chunks)} tasks, out of #{procs} possible"
+      end
       Enum.map(work_chunks, fn {by_key, contained_tx_ids}  ->
         {:ok, pid} = Task.start fn ->
           reg = Registry.register(PgInsertStage.Registry, :inserter, contained_tx_ids)
