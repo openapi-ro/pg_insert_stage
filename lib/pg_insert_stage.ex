@@ -26,12 +26,17 @@ defmodule PgInsertStage do
       worker(PgInsertStage.Consumer,[PgInsertStage.Producer]),
 
     ]
-    opts = [strategy: :one_for_one, name: RoCrawlers.Supervisor]
+    opts = [strategy: :one_for_one, name: PgInsertStage.Supervisor]
     Supervisor.start_link(children,opts)
   end
   defp test_repo do
     import Supervisor.Spec
-    if Mix.env == :test do
+    if (Mix.env == :test  and
+      # this second condition only starts the repo if
+      # `mix test` is executed in `:pg_insert_stage` mix project dir itself!
+      Mix.Project.app_path() == Application.app_dir(:pg_insert_stage)
+      )
+    do
       Code.load_file "test/test_repo.ex"
      [worker( TestRepo , [] )]
     else
@@ -47,11 +52,25 @@ defmodule PgInsertStage do
   * as an option to `bulk_insert/2`
   * using set_repo(repo)
 
+  Alternatively, any row can be a `Ecto.multi`, which will be executed.
+  The execution order is respected, meaning that an Ecto.Multi will interrupt
+  the stream.
+  assuming a transaction, where all `Ecto.Schema.t` insert into the same table and repo, and are
+  within the same transaction
+  |op | method 1       | method 2                 |
+  |---|----------------|--------------------------|
+  1   | `Ecto.Schema.t`| `Ecto.Schema.t`          |
+  2   | `Ecto.Multi`   | `Ecto.Schema.t`          |
+  3   | `Ecto.Schema.t`| `Ecto.Multi`             |
+  |less efficient(3 op)| more efficient (2 op)    |
+
+  The more efficient variant is because 1 and 2 can be executed within the same
+  `COPY` command.
 
   Valid options are
 
     * `repo: MyRepo` - the `Ecto.Repo` to use to insert the `rows`. The repository must be a _started Postgres repository_
-    * `contine: true|false` - continue the last (previously started) transaction.
+    * `continue: true|false` - continue the last (previously started) transaction.
     This will error out if no `bulk_insert/2` has previously been called in the current process.
 
   The `:continue` option is used to ensure that the order of the inserts within any retruned `current_transaction_id`

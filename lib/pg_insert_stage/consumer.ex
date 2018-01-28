@@ -33,7 +33,7 @@ defmodule PgInsertStage.Consumer do
 		 }
     if subscribe_to != [] do
       Logger.info "Consumer #{inspect self() } requests registration from #{inspect subscribe_to}"
-    end 
+    end
 	 	{:consumer, state, subscribe_to: subscribe_to}
 	end
   @doc """
@@ -84,11 +84,14 @@ defmodule PgInsertStage.Consumer do
   def do_spawn(procs, state ) do
     work = state.cache
     total = state.cache_count
-    split_each = Integer.floor_div total, procs
+    split_each =
+      case Integer.floor_div total, procs do
+        0 -> total
+        non_zero-> non_zero
+      end
     blocked_ids=
       Registry.lookup(PgInsertStage.Registry, :inserter)
         |> Enum.reduce(MapSet.new(), fn {_,blocked_tx_ids_per_task}, acc -> MapSet.union(acc, blocked_tx_ids_per_task) end)
-
     work_partition=
       work
       |> Enum.group_by(fn{{tx_id,_,_},_} ->
@@ -110,7 +113,7 @@ defmodule PgInsertStage.Consumer do
     work_chunks=
       grouped
       |> Enum.chunk_by(fn {tx_chunk,offset,len} ->
-          Integer.floor_div(offset, split_each) != Integer.floor_div(offset+len, split_each)
+            Integer.floor_div(offset, split_each) != Integer.floor_div(offset+len, split_each)
         end)
       |> Enum.map(fn chunk->
           {work_per_transaction, contained_tx_ids}=
@@ -130,19 +133,27 @@ defmodule PgInsertStage.Consumer do
         Logger.info "Spawning #{length(work_chunks)} tasks, out of #{procs} possible"
       end
       Enum.map(work_chunks, fn {by_key, contained_tx_ids}  ->
-        {:ok, pid} = Task.start fn ->
+        {:ok, pid} = Task.start(fn ->
           reg = Registry.register(PgInsertStage.Registry, :inserter, contained_tx_ids)
           row_count=
             by_key
-            |> Enum.reduce( 0, fn{{repo,table}, entries} , num->
-                {query, content} = EctoCsv.to_csv(entries, [repo: repo])
-                stream = Ecto.Adapters.SQL.stream(repo, query)
-                repo.transaction(fn -> Enum.into(content, stream) end)
+            |> Enum.reduce( 0, fn {{repo,table}, entries} , num->
+                res = EctoCsv.to_csv(entries, [repo: repo])
+                repo.transaction(fn ->
+                  res
+                  |> Enum.each( fn
+                    {:stream,query, content }->
+                      stream = Ecto.Adapters.SQL.stream(repo, query)
+                      Enum.into(content, stream)
+                    {:exec, multi} ->
+                      repo.transaction(multi)
+                    end)
+                end)
                 num+length(entries)
               end)
           Registry.unregister PgInsertStage.Registry, :inserter
           send caller, {:inserter_task_finished, row_count}
-         end
+         end) #task
       end)
     state=
       state
@@ -203,6 +214,14 @@ defmodule PgInsertStage.Consumer do
         {transaction_id,repo,next}=entry, {prev_options,total,acc} ->
           {options, entry} =
             case next do
+              %Ecto.Multi{}=multi ->
+                {[
+                  transaction_id: transaction_id,
+                  repo: repo,
+                  key: {transaction_id, repo, "func"}
+                ],
+                next
+                }
               %{__struct__: module} when is_atom(module) ->
                 Code.ensure_loaded( module)
                 if  function_exported?(module, :__schema__, 1) do
