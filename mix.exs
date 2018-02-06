@@ -37,7 +37,7 @@ defmodule PgInsertStage.Mixfile do
   defp deps do
     [
       {:oaex, path: "../oaex"},
-      {:ecto, "~> 2.1.0"},
+      {:ecto, "~> 2.2.8"},
       {:postgrex, ">= 0.0.0"},
       {:gen_stage, "~>0.12"},
       {:csv, "~> 2.0"},
