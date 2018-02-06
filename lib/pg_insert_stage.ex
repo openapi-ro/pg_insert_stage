@@ -114,9 +114,9 @@ defmodule PgInsertStage do
   @doc """
     gets the default `t:Ecto.Repo` as set with `set_repo/1`
   """
-  @spec get_repo() :: Ecto.Repo.t
-  def get_repo() do
-    me = self()
+  @spec get_repo(pid) :: Ecto.Repo.t
+  def get_repo(pid \\ nil) do
+    me =  pid || self()
     Registry.lookup(PgInsertStage.Registry, :repo)
     |> Enum.reduce_while(nil,fn
         {^me,value}, nil-> {:halt, value}

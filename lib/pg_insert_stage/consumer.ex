@@ -43,11 +43,13 @@ defmodule PgInsertStage.Consumer do
 		me = self()
 		unless defaults[:repo] do
       raise "#{__MODULE__}.subscribe_me/1 needs a repo argument if none is supplied in the configuration"
+    else
+      PgInsertStage.set_repo(defaults[:repo])
     end
     Registry.dispatch(PgInsertStage.Registry, Consumer, fn entries ->
 			for {pid,nil} <- entries do
 				Logger.info("I (#{inspect self()} am requesting inserter #{inspect pid} to subscribe")
-				send pid, {:register_with, me, defaults}
+        send pid, {:register_with, me, defaults}
 			end
 		end)
 	end
@@ -207,9 +209,17 @@ defmodule PgInsertStage.Consumer do
   """
   @type event :: {transaction_id::integer, repo::module, Ecto.Schema.t}
   @spec handle_events([event, ...], from::reference, state::map) :: {:noreply, [event, ...], state::map }
-	def handle_events(events,from,state) do
+  def handle_events(events,{from_pid,_from_ref},state) do
     {options,cache_count,entries_by_table} =
       events
+      |> Enum.map(fn
+        {_transaction_id,_repo,_next}=as_is -> as_is
+        {transaction_id, next} when is_integer(transaction_id) ->
+          {transaction_id, PgInsertStage.get_repo(from_pid), next}
+        naked ->
+          transaction_id = PgInsertStage.WorkSeq.current( ) || PgInsertStage.WorkSeq.next()
+          {transaction_id, PgInsertStage.get_repo(from_pid), naked}
+      end)
       |> Enum.reduce({nil,state.cache_count,state.cache}, fn
         {transaction_id,repo,next}=entry, {prev_options,total,acc} ->
           {options, entry} =
@@ -238,12 +248,10 @@ defmodule PgInsertStage.Consumer do
                   ],  next}
                 else
                   Logger.error("Cannot interpret struct: #{inspect next}. Skipping")
-                  require IEx
-                  IEx.pry
                   {[transaction_id: transaction_id, repo: repo, skip: true],  next}
                 end
             end
-          options = get_options(options,from, state)
+          options = get_options(options,from_pid, state)
           unless options[:skip] do
             key = options[:key]
             acc =
@@ -257,6 +265,7 @@ defmodule PgInsertStage.Consumer do
             {prev_options,total, acc}
           end
         end)
+    PgInsertStage.WorkSeq.unassign_current()
     state =
       state
       |>Map.put(:cache, entries_by_table)

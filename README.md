@@ -1,7 +1,8 @@
 # PgInsertStage
 
-**TODO: Add description**
-
+`PgInsertStage` inserts rows in a pseudo-transacted way using postgres 
+`COPY` commands.
+`PgInsertStage.bulk_insert/2` accepts
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
