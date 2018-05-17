@@ -49,7 +49,7 @@ defmodule PgInsertStage.WorkSeq do
     unassign the transaction id currently associated with the caller process
   """
   @spec unassign_current() :: {:ok, :unassigned | :was_not_assigned}
-  def unassign_current do
+  def unassign_current() do
     if current() do
       #Unregisters all entries for the given key associated to the current process in registry.
       #so that is *only|* for the current process
