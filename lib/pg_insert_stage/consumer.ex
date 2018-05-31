@@ -81,7 +81,7 @@ defmodule PgInsertStage.Consumer do
           do_spawn(num_procs_to_spawn, state)
       end
       |> Map.put(:timer, try_later())
-    {:noreply,[], state}
+    {:noreply,[], state,:hibernate}
   end
   def do_spawn(procs, state ) do
     work = state.cache
@@ -271,7 +271,7 @@ defmodule PgInsertStage.Consumer do
       |>Map.put(:cache, entries_by_table)
       |>Map.put(:cache_count, cache_count)
     Process.send_after self(), :try_spawn_inserter, 0
-    {:noreply,[], state}
+    {:noreply,[], state, :hibernate}
 	end
   def handle_cancel(cancellation_reason, from, state) do
     Map.delete(state.defaults, from)
