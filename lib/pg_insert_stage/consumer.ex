@@ -3,6 +3,7 @@ defmodule PgInsertStage.Consumer do
 	require Logger
 	use GenStage
   alias PgInsertStage.EctoCsv
+  @ask_count 1000
   def start_link(module) when is_atom(module) do
     start_link([module])
   end
@@ -11,7 +12,10 @@ defmodule PgInsertStage.Consumer do
           prefix: "public",
           subscribe_to: subscribe_to
         },
-        name: PgInsertStage.Consumer)
+        name: PgInsertStage.Consumer,
+        spawn_opt: [
+          fullsweep_after: 0
+        ])
 	end
   defp try_later(time \\10_000) do
     Process.send_after(self(), :try_spawn_inserter, time)
@@ -19,7 +23,7 @@ defmodule PgInsertStage.Consumer do
 	def init(%{}=global_defaults) do
     {subscribe_to, global_defaults} = Map.pop(global_defaults, :subscribe_to)
 		Registry.register(PgInsertStage.Registry, Consumer, nil)
-		Logger.info "Inserter Consumer #{inspect( self())} announced"
+    Logger.info "Inserter Consumer #{inspect( self())} announced"
 		state= %{
       total_count: 0,
       max_procs: System.schedulers_online(),
@@ -29,11 +33,13 @@ defmodule PgInsertStage.Consumer do
       timer: try_later, # The timer ensures that inserters are spawned if work is to be done even if Tasks crash
       defaults: %{
         global: global_defaults
-      }
+      },
+      subscriptions: %{}
 		 }
     if subscribe_to != [] do
       Logger.info "Consumer #{inspect self() } requests registration from #{inspect subscribe_to}"
     end
+    Logger.info "Adding memory high watermark event handler"
 	 	{:consumer, state, subscribe_to: subscribe_to}
 	end
   @doc """
@@ -71,7 +77,32 @@ defmodule PgInsertStage.Consumer do
      try_later(0)
      {:noreply, [],state}
   end
+  def ask_more(state) do
+    subscriptions=
+    state.subscriptions
+    |> Enum.map( fn
+      {proc_ref, open_demand} when open_demand < @ask_count ->
+        GenStage.ask(proc_ref,@ask_count-open_demand)
+        {proc_ref, @ask_count }
+      {proc_ref, @ask_count} ->
+        {proc_ref, @ask_count}
+      end)
+    |> Map.new()
+    %{state| subscriptions: subscriptions}
+  end
   def handle_info(:try_spawn_inserter, state ) do
+    state=
+      unless Enum.any?(:alarm_handler.get_alarms, fn
+        {:system_memory_high_watermark,[]}-> true
+        _-> false
+        end) do
+        ask_more(state)
+      else
+        Logger.warn("#{__MODULE__}: Memory High watermark reached")
+        #require IEx
+        #IEx.pry
+        state
+      end
     Process.cancel_timer(state.timer)
     proc_count = length(Registry.lookup(PgInsertStage.Registry, :inserter))
     state=
@@ -191,9 +222,13 @@ defmodule PgInsertStage.Consumer do
       options
       |> Keyword.get( :defaults,[])
       |> Map.new()
+    GenStage.ask(producer_pid,@ask_count)
     {
-      :automatic,
-      %{state | defaults: Map.put(state.defaults, producer_pid, subscription_defaults )}
+      :manual,
+      %{state |
+        defaults: Map.put(state.defaults, producer_pid, subscription_defaults),
+        subscriptions: Map.put(state.subscriptions, producer_pid,@ask_count)
+      }
     }
   end
   @doc """
