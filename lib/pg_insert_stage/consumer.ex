@@ -3,7 +3,10 @@ defmodule PgInsertStage.Consumer do
 	require Logger
 	use GenStage
   alias PgInsertStage.EctoCsv
+
   @ask_count 1000
+  use PgInsertStage.MemoryAlarm, ask_count: @ask_count
+
   def start_link(module) when is_atom(module) do
     start_link([module])
   end
@@ -40,6 +43,7 @@ defmodule PgInsertStage.Consumer do
       Logger.info "Consumer #{inspect self() } requests registration from #{inspect subscribe_to}"
     end
     Logger.info "Adding memory high watermark event handler"
+    state = ask_more(state)
 	 	{:consumer, state, subscribe_to: subscribe_to}
 	end
   @doc """
@@ -77,32 +81,8 @@ defmodule PgInsertStage.Consumer do
      try_later(0)
      {:noreply, [],state}
   end
-  def ask_more(state) do
-    subscriptions=
-    state.subscriptions
-    |> Enum.map( fn
-      {proc_ref, open_demand} when open_demand < @ask_count ->
-        GenStage.ask(proc_ref,@ask_count-open_demand)
-        {proc_ref, @ask_count }
-      {proc_ref, @ask_count} ->
-        {proc_ref, @ask_count}
-      end)
-    |> Map.new()
-    %{state| subscriptions: subscriptions}
-  end
+
   def handle_info(:try_spawn_inserter, state ) do
-    state=
-      unless Enum.any?(:alarm_handler.get_alarms, fn
-        {:system_memory_high_watermark,[]}-> true
-        _-> false
-        end) do
-        ask_more(state)
-      else
-        Logger.warn("#{__MODULE__}: Memory High watermark reached")
-        #require IEx
-        #IEx.pry
-        state
-      end
     Process.cancel_timer(state.timer)
     proc_count = length(Registry.lookup(PgInsertStage.Registry, :inserter))
     state=
@@ -192,6 +172,7 @@ defmodule PgInsertStage.Consumer do
       state
       |> Map.put(:cache, Map.get(work_partition, :blocked, %{}) |> Map.new())
       |> Map.put(:cache_count, state.cache_count-not_blocked_len)
+      |>ask_more()
       #TODO: store work by task_pids and get back if task fails?
     state
   end

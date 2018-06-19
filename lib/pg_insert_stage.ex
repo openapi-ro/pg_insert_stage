@@ -24,9 +24,11 @@ defmodule PgInsertStage do
       worker(PgInsertStage.WorkSeq, []),
       worker(PgInsertStage.Producer, []),
       worker(PgInsertStage.Consumer,[PgInsertStage.Producer]),
-
+      worker(Registry, [:duplicate, PgInsertStage.AlarmRegistry],id: PgInsertStage.AlarmRegistry )
     ]
     opts = [strategy: :one_for_one, name: PgInsertStage.Supervisor]
+    #:gen_event.add_handler(:alarm_handler,PgInsertStage.AlarmHandler,:gen_event_init)
+    #:gen_event.swap_handler(:alarm_handler,{:alarm_handler,:swap},{PgInsertStage.AlarmHandler, :gen_event_init})
     Supervisor.start_link(children,opts)
   end
   defp test_repo do
@@ -85,8 +87,10 @@ defmodule PgInsertStage do
    * not amongst different transactions
    * not amongst rows from different transactions
 
+   The call will wait for the producer to reply, and in case it does not, it times out if the option `timeout: integer()` is set.
+
   """
-  @spec bulk_insert([Ecto.Schema.t], [continue: boolean() , repo: Ecto.Repo.t]) :: current_transaction_id::integer
+  @spec bulk_insert([Ecto.Schema.t], [continue: boolean() , repo: Ecto.Repo.t, timeout: (integer()|:infinity)]) :: current_transaction_id::integer
     | {:error , :no_current_transaction}
   def bulk_insert(rows, options\\[]) do
     alias PgInsertStage.{Producer,WorkSeq}
@@ -96,12 +100,13 @@ defmodule PgInsertStage do
     else
       WorkSeq.current() || WorkSeq.next()
     end
+    timeout = Keyword.get(options, :timeout, :infinity)
     repo =
       case Keyword.get(options,:repo) do
         nil-> get_repo()
         repo->repo
       end
-    send PgInsertStage.Producer , {:append_work, transaction_id,repo, rows}
+    GenStage.call(PgInsertStage.Producer, {:append_work, transaction_id,repo, rows} , timeout)
   end
   @doc """
     Sets the default repo for the current process
