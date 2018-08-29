@@ -93,13 +93,7 @@ defmodule PgInsertStage.Producer do
       state = Map.put(state, :append_work_reply_list,  [from| state.append_work_reply_list])
       {:noreply, events, state}
     else
-      require IEx
-      IEx.pry
       {:reply, :ok, events, state}
     end
-  end
-  def handle_call(request, from, state) do
-    require IEx
-    IEx.pry
   end
 end

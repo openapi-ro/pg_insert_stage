@@ -7,6 +7,7 @@ defmodule PgInsertStage.MemoryAlarm do
   """
   defmacro __using__([ask_count: ask_count]) do
     quote location: :keep do
+      require AlarmHandlex
       def subscribe_alarm(state) do
         me = self()
         AlarmHandlex.on_set_alarm(fn
