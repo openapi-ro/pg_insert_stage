@@ -152,6 +152,8 @@ defmodule PgInsertStage.Consumer do
             by_key
             |> Enum.reduce( 0, fn {{repo,table}, entries} , num->
                 res = EctoCsv.to_csv(entries, [repo: repo])
+                #require IEx
+                #IEx.pry
                 repo.transaction(fn ->
                   res
                   |> Enum.each( fn

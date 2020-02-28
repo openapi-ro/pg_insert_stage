@@ -1,16 +1,17 @@
 defmodule PgInsertStage.EctoCsv do
   require Logger
   def csv_row(entity) do
-    entity.__struct__().__schema__(:types)
+    entity.__struct__()
+    |>OA.Ecto.Schema.types()
     |>Enum.map(fn {name,type} -> {name,type,Map.get(entity,name)} end)
     |>Enum.map(fn
       {name, t, nil} -> ""
       {name, :boolean, value} -> value && "true" || "false"
       {name, t, value} when  t in [:integer, :id] -> Integer.to_string value
       {name, :float, value} -> Float.to_string value
-      {name, Ecto.Date, value} -> Ecto.Date.to_string value
+      {name, :date, value} -> Date.to_string value
       {name, Ecto.UUID, value} -> value
-      {name, :naive_datetime, value} -> Ecto.DateTime.to_string value
+      {name, :naive_datetime, value} -> NaiveDateTime.to_string value
       {name, t, value} when t in [:string, :binary_id] -> value
       {name, t, value} when t in [:json,:jsonb, :map] ->Poison.encode! value
       {name, :array, value}  ->Poison.encode! value
@@ -37,7 +38,7 @@ defmodule PgInsertStage.EctoCsv do
       |> Enum.map(fn
           %Ecto.Changeset{}=c -> Ecto.Changeset.apply_changes(c)
           %Ecto.Multi{}=multi -> {:exec, multi}
-          func when is_function(func) -> 
+          func when is_function(func) ->
             multi=
               Ecto.Multi.new()
                 |> Ecto.Multi.run( "function #{inspect func}", func )
@@ -70,7 +71,11 @@ defmodule PgInsertStage.EctoCsv do
                options[:table] || first.__struct__().__schema__(:source)]
               |> Enum.map(fn s -> "\"#{s}\"" end)
               |> Enum.join(".")
-            fields = first.__struct__().__schema__(:types) |> Enum.map(fn {name,type}-> "\"#{name}\"" end)|> Enum.join(",")
+            fields =
+              first.__struct__()
+              |> OA.Ecto.Schema.types()
+              |> Enum.map(fn {name,type}-> "\"#{name}\"" end)
+              |> Enum.join(",")
             {:stream,
               "COPY #{table} (#{fields}) FROM STDIN(FORMAT csv)",
               [list]
