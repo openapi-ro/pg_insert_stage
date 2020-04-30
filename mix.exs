@@ -35,8 +35,11 @@ defmodule PgInsertStage.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
+    openapi_deps([
+      :oaex,
+      :alarm_handlex
+    ]) ++
     [
-      {:oaex, path: "../oaex"},
       {:postgrex, ">= 0.0.0"},
       {:ecto_sql, "~> 3.2"},
       {:gen_stage, "~>0.12"},
@@ -44,5 +47,19 @@ defmodule PgInsertStage.Mixfile do
       {:csv, "~> 2.0"},
       {:ex_doc, "~> 0.14", only: :dev, runtime: false}
     ]
+  end
+  def openapi_deps(packages) do
+    Enum.map(packages, fn
+      package when is_atom(package) -> openapi_dep(Mix.env, package)
+      {package, opts} when is_atom(package) and is_list(opts) ->
+        {package, default_opts } = openapi_dep(Mix.env, package)
+        {package, Keyword.merge(default_opts, opts)}
+      end)
+  end
+  def openapi_dep(:prod, package) when is_atom(package) do
+    {package, git: "git@github.com:openapi-ro/#{package}.git"}
+  end
+  def openapi_dep(_, package)  when is_atom(package)do
+    {package, path: "../#{package}"}
   end
 end
