@@ -35,31 +35,27 @@ defmodule PgInsertStage.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    openapi_deps([
-      :oaex,
-      :alarm_handlex
-    ]) ++
     [
       {:postgrex, ">= 0.0.0"},
       {:ecto_sql, "~> 3.2"},
       {:gen_stage, "~>0.12"},
-      {:alarm_handlex, path: "../alarm_handlex"},
       {:csv, "~> 2.0"},
       {:ex_doc, "~> 0.14", only: :dev, runtime: false}
+    ] ++ priv_deps "openapi-ro": [
+      :oaex,
+      :alarm_handlex
     ]
   end
-  def openapi_deps(packages) do
-    Enum.map(packages, fn
-      package when is_atom(package) -> openapi_dep(Mix.env, package)
-      {package, opts} when is_atom(package) and is_list(opts) ->
-        {package, default_opts } = openapi_dep(Mix.env, package)
-        {package, Keyword.merge(default_opts, opts)}
-      end)
+  def priv_deps(packages_by_org) do
+    packages_by_org
+    |>Enum.flat_map( fn {org, packages} ->
+      Enum.map(packages, &(priv_dep(Mix.env, to_string(org), &1)))
+    end)
   end
-  def openapi_dep(:prod, package) when is_atom(package) do
-    {package, git: "git@github.com:openapi-ro/#{package}.git"}
-  end
-  def openapi_dep(_, package)  when is_atom(package)do
-    {package, path: "../#{package}"}
-  end
+  def priv_dep(:prod, org, package ),
+    do: {package, git: "git@github.com:#{org}/#{package}.git"}
+  def priv_dep(:test, _org, package ),
+    do: {package, path: "../#{package}", env: :dev}
+  def priv_dep(env, _org, package ),
+    do: {package, path: "../#{package}", env: env}
 end
